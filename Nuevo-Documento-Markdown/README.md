@@ -1,78 +1,175 @@
 # Crear un archivo Markdown con el clic derecho en Windows
 
-Windows permite crear una carpeta, un acceso directo o un documento de texto desde el menú **Nuevo**, pero normalmente no incluye una opción para crear archivos Markdown.
+Añade una opción al menú **Nuevo** del Explorador de archivos para crear directamente un archivo Markdown vacío dentro de cualquier carpeta.
 
-Con este tutorial vamos a añadirla:
+## Vídeo paso a paso
 
-```text
-Clic derecho dentro de una carpeta > Nuevo > archivo Markdown
-```
+El vídeo paso a paso se añadirá aquí cuando esté publicado.
 
-El resultado será un archivo vacío terminado en `.md`, listo para escribir contexto para tus agentes, abrirlo con Obsidian o editarlo con cualquier aplicación compatible.
+El script:
 
-## Qué vamos a hacer
-
-Vamos a utilizar un pequeño script de PowerShell que:
-
-- Añade los archivos `.md` al menú **Nuevo** del Explorador.
-- Aplica el cambio únicamente a tu usuario de Windows.
-- No cambia la aplicación con la que abres tus Markdown.
+- Añade los archivos `.md` al menú **Nuevo** de Windows.
+- Aplica el cambio únicamente al usuario actual.
+- No cambia la aplicación utilizada para abrir Markdown.
 - No instala programas ni módulos adicionales.
-- Incluye una opción para deshacer el cambio.
+- Permite deshacer el cambio con el mismo script.
 
 ## Requisitos
 
 - Windows 10 u 11.
 - Windows PowerShell 5.1, incluido en Windows.
-- No necesitas permisos de administrador.
+- Una carpeta donde guardar el script.
 
-## 1. Crear una carpeta para la herramienta
+No es necesario tener conocimientos de PowerShell ni permisos de administrador.
 
-Abre el Explorador de archivos y crea una carpeta para guardar el script. Por ejemplo:
+## 1. Preparar la carpeta
+
+Crea una carpeta para guardar el script. Por ejemplo:
 
 ```text
-%USERPROFILE%\Documents\Herramientas-PowerShell
+%USERPROFILE%\Documents\Herramienta_IA
 ```
 
-Puedes pegar esa ruta directamente en la barra de direcciones del Explorador. Windows sustituirá `%USERPROFILE%` por la ruta de tu usuario.
+Puedes pegar esta ruta directamente en la barra de direcciones del Explorador. Windows sustituirá `%USERPROFILE%` por la ruta de tu usuario.
 
 ## 2. Mostrar las extensiones de archivo
 
-Antes de descargar el script, comprueba que Windows muestra las extensiones:
+En el Explorador de archivos:
 
-1. Abre una ventana del Explorador.
-2. Pulsa **Ver**.
-3. Selecciona **Mostrar**.
-4. Activa **Extensiones de nombre de archivo**.
+1. Abre **Ver**.
+2. Selecciona **Mostrar**.
+3. Activa **Extensiones de nombre de archivo**.
 
-Esto te permitirá comprobar que el script termina realmente en `.ps1` y que el archivo creado termina en `.md`.
+Esto evita guardar accidentalmente el script como `Nuevo-Documento-Markdown.ps1.txt`.
 
-## 3. Descargar el script
+## 3. Crear el script
 
-Abre el archivo [`Nuevo-Documento-Markdown.ps1`](./Nuevo-Documento-Markdown.ps1) en GitHub.
+Abre el Bloc de notas y pega el siguiente código:
 
-1. Pulsa el botón **Download raw file** de la parte superior derecha del código.
-2. Guarda el archivo dentro de `Herramientas-PowerShell`.
-3. Comprueba que se llama exactamente:
+```powershell
+[CmdletBinding()]
+param(
+    [ValidateSet('Instalar', 'Desinstalar')]
+    [string]$Accion = 'Instalar'
+)
 
-```text
-Nuevo-Documento-Markdown.ps1
+$ErrorActionPreference = 'Stop'
+
+$rutaShellNew = 'HKCU:\Software\Classes\.md\ShellNew'
+$nombreMarca = 'ScriptingPowerShell'
+$valorMarca = 'Nuevo-Documento-Markdown'
+
+function Actualizar-Explorador {
+    if (-not ('ScriptingPowerShell.NotificadorShell' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace ScriptingPowerShell {
+    public static class NotificadorShell {
+        [DllImport("shell32.dll")]
+        public static extern void SHChangeNotify(
+            uint eventId,
+            uint flags,
+            IntPtr item1,
+            IntPtr item2
+        );
+    }
+}
+'@
+    }
+
+    [ScriptingPowerShell.NotificadorShell]::SHChangeNotify(
+        0x08000000,
+        0,
+        [IntPtr]::Zero,
+        [IntPtr]::Zero
+    )
+}
+
+try {
+    if ($Accion -eq 'Instalar') {
+        if (Test-Path -LiteralPath $rutaShellNew) {
+            $claveExistente = Get-Item -LiteralPath $rutaShellNew
+            $valoresExistentes = $claveExistente.GetValueNames()
+            $marcaExistente = $claveExistente.GetValue($nombreMarca, '')
+
+            if ($valoresExistentes.Count -gt 0 -and $marcaExistente -ne $valorMarca) {
+                throw @"
+Windows ya tiene una configuracion para crear archivos .md desde el menu Nuevo.
+No se ha modificado para evitar sobrescribir una configuracion anterior.
+Ruta: $rutaShellNew
+"@
+            }
+        }
+        else {
+            New-Item -Path $rutaShellNew -Force | Out-Null
+        }
+
+        New-ItemProperty -LiteralPath $rutaShellNew -Name 'NullFile' -Value '' -PropertyType String -Force | Out-Null
+        New-ItemProperty -LiteralPath $rutaShellNew -Name $nombreMarca -Value $valorMarca -PropertyType String -Force | Out-Null
+
+        Actualizar-Explorador
+
+        Write-Host 'Instalacion completada.' -ForegroundColor Green
+        Write-Host 'Abre una carpeta y prueba: clic derecho > Nuevo > archivo Markdown.'
+    }
+    else {
+        if (-not (Test-Path -LiteralPath $rutaShellNew)) {
+            Write-Host 'Esta opcion no esta instalada.' -ForegroundColor Yellow
+            exit 0
+        }
+
+        $claveExistente = Get-Item -LiteralPath $rutaShellNew
+        $marcaExistente = $claveExistente.GetValue($nombreMarca, '')
+
+        if ($marcaExistente -ne $valorMarca) {
+            throw @"
+La configuracion existente no fue creada por este script.
+No se ha eliminado nada.
+Ruta: $rutaShellNew
+"@
+        }
+
+        Remove-ItemProperty -LiteralPath $rutaShellNew -Name 'NullFile' -ErrorAction SilentlyContinue
+        Remove-ItemProperty -LiteralPath $rutaShellNew -Name $nombreMarca -ErrorAction SilentlyContinue
+
+        $valoresRestantes = (Get-Item -LiteralPath $rutaShellNew).GetValueNames()
+        if ($valoresRestantes.Count -eq 0) {
+            Remove-Item -LiteralPath $rutaShellNew -Force
+        }
+
+        Actualizar-Explorador
+
+        Write-Host 'Desinstalacion completada.' -ForegroundColor Green
+        Write-Host 'Se ha quitado el archivo Markdown del menu Nuevo.'
+    }
+}
+catch {
+    Write-Error $_.Exception.Message
+    exit 1
+}
 ```
 
-No debe llamarse `Nuevo-Documento-Markdown.ps1.txt`.
+No tienes que cambiar ninguna ruta ni personalizar ninguna línea del código.
 
-## 4. Abrir una terminal en la carpeta
+## 4. Guardar el script
 
-Entra en la carpeta `Herramientas-PowerShell`.
+En el Bloc de notas:
 
-1. Haz clic derecho en una zona vacía de la carpeta.
-2. Selecciona **Abrir en Terminal**.
+1. Selecciona **Archivo > Guardar como**.
+2. En **Tipo**, elige **Todos los archivos**.
+3. Escribe `Nuevo-Documento-Markdown.ps1`.
+4. Guárdalo dentro de la carpeta `Herramienta_IA`.
 
-La terminal debe abrirse mostrando la ruta de esa carpeta. No importa si ves `PowerShell` o `Windows PowerShell`: el siguiente comando llama expresamente a la versión incluida con Windows.
+Comprueba que el archivo termina exactamente en `.ps1`, no en `.ps1.txt`.
 
-## 5. Instalar la opción
+## 5. Probar el script
 
-Copia este comando completo, pégalo en la terminal y pulsa `Enter`:
+1. Abre la carpeta `Herramienta_IA`.
+2. Haz clic derecho en una zona vacía.
+3. Selecciona **Abrir en Terminal**.
+4. Ejecuta:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Nuevo-Documento-Markdown.ps1"
@@ -84,13 +181,19 @@ Si todo ha ido bien, verás:
 Instalacion completada.
 ```
 
-No cierres todavía la terminal. Primero vamos a probar el resultado.
+Si PowerShell indica que el script no existe, muestra los nombres reales de los archivos con:
 
-## 6. Crear tu primer Markdown con el clic derecho
+```powershell
+Get-ChildItem -File | Select-Object -ExpandProperty Name
+```
+
+No continúes hasta que la instalación termine sin errores.
+
+## 6. Probar el menú Nuevo
 
 1. Abre cualquier carpeta del Explorador.
 2. Haz clic derecho en una zona vacía.
-3. Abre el menú **Nuevo**.
+3. Abre **Nuevo**.
 4. Selecciona la opción correspondiente a Markdown.
 5. Escribe un nombre para el archivo y pulsa `Enter`.
 
@@ -102,23 +205,15 @@ Lo importante es comprobar que Windows crea un archivo como este:
 Nuevo documento Markdown.md
 ```
 
-En algunas versiones de Windows 11 puede ser necesario pulsar primero **Mostrar más opciones** para encontrar el menú **Nuevo**.
+En algunas versiones de Windows 11 puede ser necesario pulsar primero **Mostrar más opciones**.
 
 No continúes hasta que puedas crear un archivo terminado en `.md`.
 
-## 7. Abrir y editar el archivo
+## 7. Desinstalar la opción
 
-Haz doble clic sobre el Markdown que acabas de crear.
+No necesitas desinstalarla para utilizarla. Este paso sirve para comprobar que el cambio es reversible o para eliminarlo en el futuro.
 
-Windows lo abrirá con la aplicación que ya tengas asociada a `.md`, por ejemplo Obsidian, Visual Studio Code, Typora o el Bloc de notas.
-
-El script no decide qué editor se utiliza y no modifica esa asociación.
-
-## Cómo desinstalarlo
-
-Si quieres retirar la opción del menú **Nuevo**:
-
-1. Vuelve a la carpeta `Herramientas-PowerShell`.
+1. Abre la carpeta `Herramienta_IA`.
 2. Haz clic derecho en una zona vacía.
 3. Selecciona **Abrir en Terminal**.
 4. Ejecuta:
@@ -135,56 +230,39 @@ Desinstalacion completada.
 
 El script solo elimina la configuración que él mismo haya creado.
 
-## Qué está haciendo PowerShell
+Si quieres volver a instalarla, ejecuta otra vez el comando del paso 5.
 
-Windows construye el menú **Nuevo** a partir de una zona del Registro. El script crea esta clave para el usuario actual:
+## Uso
+
+Una vez instalado, no necesitas volver a ejecutar el script:
 
 ```text
-HKEY_CURRENT_USER\Software\Classes\.md\ShellNew
+Abrir una carpeta -> Clic derecho -> Nuevo -> Markdown
 ```
 
-Dentro añade un valor llamado `NullFile`. Ese valor le indica al Explorador que puede crear un archivo `.md` vacío.
-
-El script también avisa al Explorador para que vuelva a leer la configuración. Por eso normalmente no es necesario reiniciar el ordenador.
-
-Esta es la técnica documentada por Microsoft para añadir tipos de archivo al menú **Nuevo** mediante `ShellNew` y `NullFile`:
-
-- [Extending Shortcut Menus — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/shell/context)
-
-## Seguridad
-
-El script trabaja dentro de `HKEY_CURRENT_USER`, por lo que:
-
-- El cambio solo afecta al usuario de Windows que lo ejecuta.
-- No solicita permisos de administrador.
-- No modifica la configuración de otros usuarios.
-- No cambia la política de ejecución de PowerShell de forma permanente.
-
-El parámetro `-ExecutionPolicy Bypass` se aplica únicamente al proceso utilizado para ejecutar este archivo y termina cuando cierras esa ejecución.
-
-Antes de instalar, el script comprueba si ya existe una configuración para crear `.md`. Si encuentra una que no ha creado él, se detiene para no sobrescribirla.
+El archivo se crea vacío y listo para escribir. Windows lo abrirá con la aplicación que ya tengas asociada a `.md`, por ejemplo Obsidian, Visual Studio Code, Typora o el Bloc de notas.
 
 ## Solución de problemas
 
-### No aparece ninguna opción Markdown
+### La opción Markdown no aparece
 
-El Explorador puede tardar en actualizar el menú:
+Cierra todas las ventanas del Explorador y abre una carpeta nueva.
 
-1. Cierra todas las ventanas del Explorador.
-2. Abre una carpeta nueva y vuelve a comprobarlo.
-3. Si continúa sin aparecer, cierra sesión en Windows y vuelve a entrar.
+Si continúa sin aparecer, cierra sesión en Windows y vuelve a entrar. No debería ser necesario reiniciar el ordenador.
 
-### El archivo se ha guardado como `.ps1.txt`
+### El script aparece como archivo de texto
 
-Activa **Ver > Mostrar > Extensiones de nombre de archivo** y elimina solamente el `.txt` final. El nombre correcto es:
+Activa las extensiones de archivo y comprueba que el nombre no termina en `.ps1.txt`.
+
+El nombre correcto es:
 
 ```text
 Nuevo-Documento-Markdown.ps1
 ```
 
-### PowerShell dice que no encuentra el script
+### PowerShell no encuentra el script
 
-Comprueba qué archivos hay en la carpeta ejecutando:
+Ejecuta:
 
 ```powershell
 Get-ChildItem -File | Select-Object -ExpandProperty Name
@@ -192,26 +270,30 @@ Get-ChildItem -File | Select-Object -ExpandProperty Name
 
 Si `Nuevo-Documento-Markdown.ps1` no aparece, la terminal está abierta en otra carpeta o el archivo tiene un nombre diferente.
 
-### Aparece «Windows ya tiene una configuración»
+### Windows ya tiene una configuración para `.md`
 
 Otra aplicación o una configuración anterior ya ha añadido `.md` al menú **Nuevo**. El script se detiene sin modificarla para evitar conflictos.
 
-Antes de hacer nada más, abre una carpeta y comprueba si ya aparece una opción que cree archivos `.md`.
+Abre una carpeta y comprueba si ya aparece una opción que cree archivos `.md`.
 
 ### La opción tiene otro nombre
 
-Es normal. Windows obtiene el nombre del tipo de archivo o de la aplicación asociada. Comprueba el resultado creando un archivo: si termina en `.md`, la herramienta está funcionando.
+Windows obtiene el nombre del tipo de archivo o de la aplicación asociada. Crea un archivo y comprueba su extensión. Si termina en `.md`, está funcionando correctamente.
 
-## Uso habitual
+## Seguridad
 
-Una vez instalado, ya no necesitas volver a ejecutar el script:
+El comando utiliza `-ExecutionPolicy Bypass` únicamente para ese proceso de PowerShell. No modifica de forma permanente la política de ejecución del sistema.
+
+El script modifica solamente esta clave del usuario actual:
 
 ```text
-Entrar en una carpeta
-→ Clic derecho
-→ Nuevo
-→ Markdown
-→ Escribir el nombre
+HKEY_CURRENT_USER\Software\Classes\.md\ShellNew
 ```
 
-El script debe conservarse únicamente si quieres disponer fácilmente del comando de desinstalación.
+Windows utiliza `ShellNew` para decidir qué tipos de archivo aparecen en el menú **Nuevo**. El valor `NullFile` le indica que debe crear un archivo vacío.
+
+El script no necesita permisos de administrador, no instala programas y no cambia la aplicación utilizada para abrir los archivos Markdown.
+
+Antes de realizar el cambio, comprueba si ya existe una configuración para `.md`. Si encuentra una que no ha creado él, se detiene sin sobrescribirla.
+
+Microsoft documenta el funcionamiento de `ShellNew` y `NullFile` en [Extending Shortcut Menus](https://learn.microsoft.com/en-us/windows/win32/shell/context).
