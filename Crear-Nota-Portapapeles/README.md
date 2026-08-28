@@ -4,7 +4,9 @@ Copia cualquier fragmento de texto, pulsa una combinación de teclas y guárdalo
 
 ## Vídeo paso a paso
 
-[▶ Ver cómo crear y configurar la herramienta](./como-crear-notas-desde-el-portapapeles.mp4)
+[![Cómo guardar el portapapeles en Markdown con PowerShell](./miniatura-youtube.png)](https://youtu.be/Id3ZUSKpzq8)
+
+[▶ Ver el tutorial completo en YouTube](https://youtu.be/Id3ZUSKpzq8)
 
 El script:
 
