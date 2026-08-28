@@ -2,6 +2,10 @@
 
 Copia cualquier fragmento de texto, pulsa una combinación de teclas y guárdalo automáticamente como un archivo Markdown dentro de un `inbox`.
 
+## Vídeo paso a paso
+
+[▶ Ver cómo crear y configurar la herramienta](./como-crear-notas-desde-el-portapapeles.mp4)
+
 El script:
 
 - Lee el texto del portapapeles.
