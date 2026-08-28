@@ -4,7 +4,9 @@ Añade una opción al menú **Nuevo** del Explorador de archivos para crear dire
 
 ## Vídeo paso a paso
 
-El vídeo paso a paso se añadirá aquí cuando esté publicado.
+[![Cómo crear archivos Markdown con clic derecho en Windows](./miniatura-youtube.png)](https://youtu.be/c1ET5uzwpeI)
+
+[▶ Ver el tutorial completo en YouTube](https://youtu.be/c1ET5uzwpeI)
 
 El script:
 
