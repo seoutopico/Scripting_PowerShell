@@ -10,7 +10,7 @@ El script:
 
 - Añade los archivos `.md` al menú **Nuevo** de Windows.
 - Aplica el cambio únicamente al usuario actual.
-- No cambia la aplicación utilizada para abrir Markdown.
+- Conserva el editor Markdown registrado; si no existe ninguno, utiliza el Bloc de notas.
 - No instala programas ni módulos adicionales.
 - Permite deshacer el cambio con el mismo script.
 
@@ -55,7 +55,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$rutaShellNew = 'HKCU:\Software\Classes\.md\ShellNew'
+$rutaExtension = 'HKCU:\Software\Classes\.md'
+$rutaShellNew = Join-Path $rutaExtension 'ShellNew'
+$rutaProgIdPropio = 'HKCU:\Software\Classes\ScriptingPowerShell.MarkdownFile'
 $nombreMarca = 'ScriptingPowerShell'
 $valorMarca = 'Nuevo-Documento-Markdown'
 
@@ -89,6 +91,8 @@ namespace ScriptingPowerShell {
 
 try {
     if ($Accion -eq 'Instalar') {
+        $asociacionYaConfigurada = $false
+
         if (Test-Path -LiteralPath $rutaShellNew) {
             $claveExistente = Get-Item -LiteralPath $rutaShellNew
             $valoresExistentes = $claveExistente.GetValueNames()
@@ -101,13 +105,60 @@ No se ha modificado para evitar sobrescribir una configuracion anterior.
 Ruta: $rutaShellNew
 "@
             }
+
+            $asociacionYaConfigurada =
+                $marcaExistente -eq $valorMarca -and
+                $valoresExistentes -contains 'ProgIdConfigurado'
         }
         else {
             New-Item -Path $rutaShellNew -Force | Out-Null
         }
 
+        $claveExtension = Get-Item -LiteralPath $rutaExtension
+        if ($asociacionYaConfigurada) {
+            $progIdAnterior = [string]$claveExistente.GetValue('ProgIdAnterior', '')
+            $progIdConfigurado = [string]$claveExistente.GetValue('ProgIdConfigurado', '')
+            $progIdPropioCreado = [int]$claveExistente.GetValue('ProgIdPropioCreado', 0)
+        }
+        else {
+            $progIdAnterior = [string]$claveExtension.GetValue('', '')
+            $progIdConfigurado = ''
+            $progIdPropioCreado = 0
+        }
+
+        if (-not $asociacionYaConfigurada -and [string]::IsNullOrWhiteSpace($progIdAnterior)) {
+            $rutaOpenWith = Join-Path $rutaExtension 'OpenWithProgids'
+            $candidatos = @()
+
+            if (Test-Path -LiteralPath $rutaOpenWith) {
+                $candidatos = (Get-Item -LiteralPath $rutaOpenWith).GetValueNames() |
+                    Where-Object {
+                        -not [string]::IsNullOrWhiteSpace($_) -and
+                        (Test-Path -LiteralPath "Registry::HKEY_CLASSES_ROOT\$_")
+                    }
+            }
+
+            $progIdConfigurado = $candidatos | Select-Object -First 1
+
+            if ([string]::IsNullOrWhiteSpace($progIdConfigurado)) {
+                $progIdConfigurado = 'ScriptingPowerShell.MarkdownFile'
+                New-Item -Path $rutaProgIdPropio -Force | Out-Null
+                Set-Item -LiteralPath $rutaProgIdPropio -Value 'Documento Markdown'
+
+                $rutaComando = Join-Path $rutaProgIdPropio 'shell\open\command'
+                New-Item -Path $rutaComando -Force | Out-Null
+                Set-Item -LiteralPath $rutaComando -Value ('"{0}\System32\notepad.exe" "%1"' -f $env:SystemRoot)
+                $progIdPropioCreado = 1
+            }
+
+            Set-Item -LiteralPath $rutaExtension -Value $progIdConfigurado
+        }
+
         New-ItemProperty -LiteralPath $rutaShellNew -Name 'NullFile' -Value '' -PropertyType String -Force | Out-Null
         New-ItemProperty -LiteralPath $rutaShellNew -Name $nombreMarca -Value $valorMarca -PropertyType String -Force | Out-Null
+        New-ItemProperty -LiteralPath $rutaShellNew -Name 'ProgIdAnterior' -Value $progIdAnterior -PropertyType String -Force | Out-Null
+        New-ItemProperty -LiteralPath $rutaShellNew -Name 'ProgIdConfigurado' -Value $progIdConfigurado -PropertyType String -Force | Out-Null
+        New-ItemProperty -LiteralPath $rutaShellNew -Name 'ProgIdPropioCreado' -Value $progIdPropioCreado -PropertyType DWord -Force | Out-Null
 
         Actualizar-Explorador
 
@@ -131,8 +182,33 @@ Ruta: $rutaShellNew
 "@
         }
 
+        $progIdAnterior = [string]$claveExistente.GetValue('ProgIdAnterior', '')
+        $progIdConfigurado = [string]$claveExistente.GetValue('ProgIdConfigurado', '')
+        $progIdPropioCreado = [int]$claveExistente.GetValue('ProgIdPropioCreado', 0)
+
+        if (-not [string]::IsNullOrWhiteSpace($progIdConfigurado)) {
+            $claveExtension = Get-Item -LiteralPath $rutaExtension
+            $progIdActual = [string]$claveExtension.GetValue('', '')
+
+            if ($progIdActual -eq $progIdConfigurado) {
+                if ([string]::IsNullOrWhiteSpace($progIdAnterior)) {
+                    Set-Item -LiteralPath $rutaExtension -Value ''
+                }
+                else {
+                    Set-Item -LiteralPath $rutaExtension -Value $progIdAnterior
+                }
+            }
+        }
+
+        if ($progIdPropioCreado -eq 1 -and (Test-Path -LiteralPath $rutaProgIdPropio)) {
+            Remove-Item -LiteralPath $rutaProgIdPropio -Recurse -Force
+        }
+
         Remove-ItemProperty -LiteralPath $rutaShellNew -Name 'NullFile' -ErrorAction SilentlyContinue
         Remove-ItemProperty -LiteralPath $rutaShellNew -Name $nombreMarca -ErrorAction SilentlyContinue
+        Remove-ItemProperty -LiteralPath $rutaShellNew -Name 'ProgIdAnterior' -ErrorAction SilentlyContinue
+        Remove-ItemProperty -LiteralPath $rutaShellNew -Name 'ProgIdConfigurado' -ErrorAction SilentlyContinue
+        Remove-ItemProperty -LiteralPath $rutaShellNew -Name 'ProgIdPropioCreado' -ErrorAction SilentlyContinue
 
         $valoresRestantes = (Get-Item -LiteralPath $rutaShellNew).GetValueNames()
         if ($valoresRestantes.Count -eq 0) {
@@ -240,7 +316,7 @@ Una vez instalado, no necesitas volver a ejecutar el script:
 Abrir una carpeta -> Clic derecho -> Nuevo -> Markdown
 ```
 
-El archivo se crea vacío y listo para escribir. Windows lo abrirá con la aplicación que ya tengas asociada a `.md`, por ejemplo Obsidian, Visual Studio Code, Typora o el Bloc de notas.
+El archivo se crea vacío y listo para escribir. Si Windows ya conoce un editor compatible con `.md`, el script conserva ese tipo de archivo. Si no encuentra ninguno, registra **Documento Markdown** y utiliza el Bloc de notas.
 
 ## Solución de problemas
 
@@ -292,7 +368,9 @@ HKEY_CURRENT_USER\Software\Classes\.md\ShellNew
 
 Windows utiliza `ShellNew` para decidir qué tipos de archivo aparecen en el menú **Nuevo**. El valor `NullFile` le indica que debe crear un archivo vacío.
 
-El script no necesita permisos de administrador, no instala programas y no cambia la aplicación utilizada para abrir los archivos Markdown.
+El script no necesita permisos de administrador ni instala programas. Si `.md` no tiene un tipo principal, reutiliza un editor Markdown registrado. Si tampoco encuentra uno, crea su propio tipo y utiliza el Bloc de notas.
+
+Al desinstalar, restaura el tipo de archivo que existía antes de ejecutar el script.
 
 Antes de realizar el cambio, comprueba si ya existe una configuración para `.md`. Si encuentra una que no ha creado él, se detiene sin sobrescribirla.
 
